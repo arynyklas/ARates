@@ -1,0 +1,35 @@
+bot_token: ...
+main_channel_id: -100
+main_channel_url: https://t.me/A_Rates
+main_channel_title: ...
+main_channel_message_id: ...
+coingecko:
+  vs_currency: usd
+  chart_days: 1
+proxies:
+  - ...
+coins:
+  TON: the-open-network
+channels:
+  TON:
+    - -100
+    - https://t.me/ATONRates
+parse_prices:
+  USD:
+    - usd
+    - 2
+  EUR:
+    - eur
+    - 2
+  RUB:
+    - rub
+    - 2
+  UAH:
+    - uah
+    - 2
+  BTC:
+    - btc
+    - 8
+  ETH:
+    - eth
+    - 8
