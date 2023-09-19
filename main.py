@@ -191,7 +191,8 @@ async def on_startup() -> None:
         await bot.edit_message_text(
             chat_id = config.main_channel_id,
             message_id = config.main_channel_message_id,
-            text = DEFAULT_MESSAGE
+            text = DEFAULT_MESSAGE,
+            disable_web_page_preview = True
         )
 
     except exceptions.TelegramAPIError:
