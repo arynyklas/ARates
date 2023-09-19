@@ -9,6 +9,7 @@ CONFIG_FILEPATH: Path = Path(__file__).parent / "config.yml"
 
 
 class CoingeckoConfig(BaseModel):
+    prices_checker_delay: int
     vs_currency: str
     chart_days: int
 
@@ -20,6 +21,7 @@ class Config(BaseModel):
     main_channel_title: str
     main_channel_message_id: int
     coingecko: CoingeckoConfig
+    upload_filename: str
     proxies: List[str]
     coins: Dict[str, str]
     channels: Dict[str, Tuple[int, str]]

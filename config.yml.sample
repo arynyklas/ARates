@@ -4,8 +4,10 @@ main_channel_url: https://t.me/A_Rates
 main_channel_title: ...
 main_channel_message_id: ...
 coingecko:
+  prices_checker_delay: 60
   vs_currency: usd
   chart_days: 1
+upload_filename: photo.png
 proxies:
   - ...
 coins:

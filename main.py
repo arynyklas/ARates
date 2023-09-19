@@ -1,16 +1,17 @@
 from aiogram import Dispatcher, Bot, enums, filters, types, exceptions
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from io import BytesIO
 from pytz import utc as utc_timezone
 from datetime import datetime
+from asyncio import sleep, create_task
 
 from coingecko import CoinGecko
 from basic_data import TEXTS
-from utils import prettify_number
 from config import config
 
-from typing import Tuple, Dict, List
+import utils
+
+from typing import Optional, Tuple, Dict, AsyncGenerator, List
 
 
 dispatcher: Dispatcher = Dispatcher()
@@ -28,6 +29,9 @@ coingecko: CoinGecko = CoinGecko(
 )
 
 
+DEFAULT_MESSAGE: Optional[str] = None
+
+
 def parse_price(current_prices: Dict[str, float], price_change_percentages: Dict[str, float], currency_name: str, numbers_after: int) -> Tuple[str, str]:
     return (
         format(
@@ -36,7 +40,7 @@ def parse_price(current_prices: Dict[str, float], price_change_percentages: Dict
                 numbers_after = numbers_after
             )
         ),
-        prettify_number(
+        utils.prettify_number(
             string = format(
                 price_change_percentages[currency_name],
                 ".1f"
@@ -45,120 +49,149 @@ def parse_price(current_prices: Dict[str, float], price_change_percentages: Dict
     )
 
 
-async def exchange_checker() -> None:
-    for coin_name, (channel_id, _) in config.channels.items():
-        print(f"{coin_name} ({channel_id})")
+class CustomBufferedInputFile(types.InputFile):
+    def __init__(self, buffered_file: BytesIO, filename: str, chunk_size: int = types.input_file.DEFAULT_CHUNK_SIZE):
+        super().__init__(filename=filename, chunk_size=chunk_size)
 
-        coin_code: str = config.coins[coin_name]
+        self.buffered_file: BytesIO = buffered_file
 
-        market_data: dict = await coingecko.get_market_data(
-            coin_code = coin_code
-        )
+    async def read(self, bot: Bot) -> AsyncGenerator[bytes, None]:
+        while chunk := self.buffered_file.read(self.chunk_size):
+            yield chunk
 
-        dt_now: datetime = datetime.now(
-            tz = utc_timezone
-        )
 
-        parse_prices: Dict[str, Tuple[str, int]] = config.parse_prices.copy()
+async def coingecko_prices_checker() -> None:
+    global DEFAULT_MESSAGE
 
-        if coin_name in parse_prices:
-            del parse_prices[coin_name]
+    vs_currency_upper: str = config.coingecko.vs_currency.upper()
 
-        current_prices: Dict[str, float] = market_data["current_price"]
-        price_change_percentages: Dict[str, float] = market_data["price_change_percentage_24h_in_currency"]
+    started_at: float
 
-        prices_and_percentages: List[str] = []
+    started_at = utils.get_float_timestamp()
 
-        for currency_name_upper, (currency_name_lower, numbers_after) in parse_prices.items():
-            currency_price: str
-            currency_persentage: str
+    skipped_time: float = started_at % config.coingecko.prices_checker_delay
 
-            currency_price, currency_persentage = parse_price(
-                current_prices = current_prices,
-                price_change_percentages = price_change_percentages,
-                currency_name = currency_name_lower,
-                numbers_after = numbers_after
+    if skipped_time > 0:
+        await sleep(config.coingecko.prices_checker_delay - skipped_time)
+
+    while True:
+        started_at = utils.get_float_timestamp()
+
+        updated_prices: Dict[str, float] = {}
+
+        for coin_name, (channel_id, _) in config.channels.items():
+            coin_code: str = config.coins[coin_name]
+
+            market_data: dict = await coingecko.get_market_data(
+                coin_code = coin_code
             )
 
-            prices_and_percentages.append(
-                TEXTS.price.format(
-                    currency_name = currency_name_upper,
-                    currency_price = currency_price,
-                    currency_persentage = currency_persentage
+            dt_now: datetime = datetime.now(
+                tz = utc_timezone
+            )
+
+            parse_prices: Dict[str, Tuple[str, int]] = config.parse_prices.copy()
+
+            if coin_name in parse_prices:
+                del parse_prices[coin_name]
+
+            current_prices: Dict[str, float] = market_data["current_price"]
+            price_change_percentages: Dict[str, float] = market_data["price_change_percentage_24h_in_currency"]
+
+            prices_and_percentages: List[str] = []
+
+            for currency_name_upper, (currency_name_lower, numbers_after) in parse_prices.items():
+                currency_price: str
+                currency_persentage: str
+
+                currency_price, currency_persentage = parse_price(
+                    current_prices = current_prices,
+                    price_change_percentages = price_change_percentages,
+                    currency_name = currency_name_lower,
+                    numbers_after = numbers_after
+                )
+
+                prices_and_percentages.append(
+                    TEXTS.price.format(
+                        currency_name = currency_name_upper,
+                        currency_price = currency_price,
+                        currency_persentage = currency_persentage
+                    )
+                )
+
+            await bot.send_photo(
+                chat_id = channel_id,
+                photo = CustomBufferedInputFile(
+                    buffered_file = (
+                        await coingecko.create_plot(
+                            coin_code = coin_code,
+                            title = "{coin_name}-{vs_currency}".format(
+                                coin_name = coin_name,
+                                vs_currency = vs_currency_upper
+                            )
+                        )
+                    ),
+                    filename = config.upload_filename
+                ),
+                caption = TEXTS.channel_notify.format(
+                    prices = "\n".join(prices_and_percentages),
+                    coin_code = coin_code,
+                    main_channel_url = config.main_channel_url,
+                    main_channel_title = config.main_channel_title,
+                    time = dt_now.strftime("%H:%M"),
+                    date = dt_now.strftime("%d.%m.%Y")
                 )
             )
 
-        caption: str = TEXTS.channel_notify.format(
-            prices = "\n".join(prices_and_percentages),
-            coin_code = coin_code,
+            updated_prices[coin_name] = market_data["current_price"][config.coingecko.vs_currency]
+
+        DEFAULT_MESSAGE = TEXTS.default_message.format(
+            channels = "\n".join([
+                TEXTS.channel.format(
+                    coin_name = coin_name,
+                    channel_url = channel_url,
+                    channel_price = TEXTS.channel_price.format(
+                        currency_price = format(
+                            updated_prices[coin_name],
+                            ".{numbers_after}f".format(
+                                numbers_after = config.parse_prices[vs_currency_upper][1]
+                            )
+                        ),
+                        vs_currency = vs_currency_upper
+                    )
+                )
+                for coin_name, (_, channel_url) in config.channels.items()
+            ]),
             main_channel_url = config.main_channel_url,
-            main_channel_title = config.main_channel_title,
-            time = dt_now.strftime("%H:%M"),
-            date = dt_now.strftime("%d.%m.%Y")
+            main_channel_title = config.main_channel_title
         )
 
-        await bot.send_photo(
-            chat_id = channel_id,
-            photo = types.BufferedInputFile(
-                file = (
-                    await coingecko.create_plot(
-                        coin_code = coin_code,
-                        title = "{coin_name}-USD".format(
-                            coin_name = coin_name
-                        )
-                    )
-                ).read(),
-                filename = "photo.png"
-            ),
-            caption = caption
-        )
+        sleep_time: float = config.coingecko.prices_checker_delay - (utils.get_float_timestamp() - started_at)
+
+        if sleep_time > 0:
+            await sleep(sleep_time)
 
 
 @dispatcher.message(filters.Command("start"))
 async def start_handler(message: types.Message) -> None:
     await message.answer(
-        text = TEXTS.start.format(
-            channels = "\n".join([
-                TEXTS.channel.format(
-                    coin_name = coin_name,
-                    channel_url = channel_url
-                )
-                for coin_name, (_, channel_url) in config.channels.items()
-            ])
-        ),
+        text = DEFAULT_MESSAGE,
         disable_web_page_preview = True
     )
 
 
 @dispatcher.startup()
 async def on_startup() -> None:
-    scheduler: AsyncIOScheduler = AsyncIOScheduler(
-        timezone = utc_timezone
-    )
+    create_task(coingecko_prices_checker())
 
-    for minute in range(0, 60):
-        scheduler.add_job(
-            func = exchange_checker,
-            trigger = CronTrigger(
-                minute = minute
-            )
-        )
-
-    scheduler.start()
+    while not DEFAULT_MESSAGE:
+        await sleep(1)
 
     try:
         await bot.edit_message_text(
             chat_id = config.main_channel_id,
             message_id = config.main_channel_message_id,
-            text = TEXTS.channels_list.format(
-                channels = "\n".join([
-                    TEXTS.channel.format(
-                        coin_name = coin_name,
-                        channel_url = channel_url
-                    )
-                    for coin_name, (_, channel_url) in config.channels.items()
-                ])
-            )
+            text = DEFAULT_MESSAGE
         )
 
     except exceptions.TelegramAPIError:

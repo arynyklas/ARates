@@ -1,5 +1,4 @@
 git+https://github.com/arynyklas/aiogram
-apscheduler == 3.10.1
 pytz == 2023.3
 httpx == 0.24.1
 matplotlib == 3.7.2
