@@ -11,7 +11,7 @@ from config import config
 
 import utils
 
-from typing import Optional, Tuple, Dict, AsyncGenerator, List
+from typing import Optional, Tuple, Dict, AsyncGenerator, Coroutine, List
 
 
 dispatcher: Dispatcher = Dispatcher()
@@ -61,17 +61,25 @@ class CustomBufferedInputFile(types.InputFile):
             yield chunk
 
 
+async def tg_request_repeater(coro: Coroutine) -> None:
+    while True:
+        try:
+            await coro
+        except exceptions.TelegramAPIError:
+            pass
+        else:
+            break
+
+
 async def edit_default_message() -> None:
-    try:
-        await bot.edit_message_text(
+    await tg_request_repeater(
+        coro = bot.edit_message_text(
             chat_id = config.main_channel_id,
             message_id = config.main_channel_message_id,
             text = DEFAULT_MESSAGE,
             disable_web_page_preview = True
         )
-
-    except exceptions.TelegramAPIError:
-        pass
+    )
 
 
 async def coingecko_prices_checker() -> None:
@@ -133,27 +141,29 @@ async def coingecko_prices_checker() -> None:
                     )
                 )
 
-            await bot.send_photo(
-                chat_id = channel_id,
-                photo = CustomBufferedInputFile(
-                    buffered_file = (
-                        await coingecko.create_plot(
-                            coin_code = coin_code,
-                            title = "{coin_name}-{vs_currency}".format(
-                                coin_name = coin_name,
-                                vs_currency = vs_currency_upper
+            await tg_request_repeater(
+                coro = bot.send_photo(
+                    chat_id = channel_id,
+                    photo = CustomBufferedInputFile(
+                        buffered_file = (
+                            await coingecko.create_plot(
+                                coin_code = coin_code,
+                                title = "{coin_name}-{vs_currency}".format(
+                                    coin_name = coin_name,
+                                    vs_currency = vs_currency_upper
+                                )
                             )
-                        )
+                        ),
+                        filename = config.upload_filename
                     ),
-                    filename = config.upload_filename
-                ),
-                caption = TEXTS.channel_notify.format(
-                    prices = "\n".join(prices_and_percentages),
-                    coin_code = coin_code,
-                    main_channel_url = config.main_channel_url,
-                    main_channel_title = config.main_channel_title,
-                    time = dt_now.strftime("%H:%M"),
-                    date = dt_now.strftime("%d.%m.%Y")
+                    caption = TEXTS.channel_notify.format(
+                        prices = "\n".join(prices_and_percentages),
+                        coin_code = coin_code,
+                        main_channel_url = config.main_channel_url,
+                        main_channel_title = config.main_channel_title,
+                        time = dt_now.strftime("%H:%M"),
+                        date = dt_now.strftime("%d.%m.%Y")
+                    )
                 )
             )
 
@@ -182,7 +192,8 @@ async def coingecko_prices_checker() -> None:
 
         await edit_default_message()
 
-        CAN_STARTUP = True
+        if not CAN_STARTUP:
+            CAN_STARTUP = True
 
         sleep_time: float = config.coingecko.prices_checker_delay - (utils.get_float_timestamp() - started_at)
 
@@ -204,11 +215,6 @@ async def on_startup() -> None:
 
     while not CAN_STARTUP:
         await sleep(1)
-
-
-@dispatcher.shutdown()
-async def on_shutdown() -> None:
-    pass
 
 
 if __name__ == "__main__":
