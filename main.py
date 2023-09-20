@@ -29,6 +29,7 @@ coingecko: CoinGecko = CoinGecko(
 )
 
 
+CAN_STARTUP: bool = False
 DEFAULT_MESSAGE: Optional[str] = None
 
 
@@ -60,8 +61,21 @@ class CustomBufferedInputFile(types.InputFile):
             yield chunk
 
 
+async def edit_default_message() -> None:
+    try:
+        await bot.edit_message_text(
+            chat_id = config.main_channel_id,
+            message_id = config.main_channel_message_id,
+            text = DEFAULT_MESSAGE,
+            disable_web_page_preview = True
+        )
+
+    except exceptions.TelegramAPIError:
+        pass
+
+
 async def coingecko_prices_checker() -> None:
-    global DEFAULT_MESSAGE
+    global DEFAULT_MESSAGE, CAN_STARTUP
 
     vs_currency_upper: str = config.coingecko.vs_currency.upper()
 
@@ -166,6 +180,10 @@ async def coingecko_prices_checker() -> None:
             main_channel_title = config.main_channel_title
         )
 
+        await edit_default_message()
+
+        CAN_STARTUP = True
+
         sleep_time: float = config.coingecko.prices_checker_delay - (utils.get_float_timestamp() - started_at)
 
         if sleep_time > 0:
@@ -184,19 +202,8 @@ async def start_handler(message: types.Message) -> None:
 async def on_startup() -> None:
     create_task(coingecko_prices_checker())
 
-    while not DEFAULT_MESSAGE:
+    while not CAN_STARTUP:
         await sleep(1)
-
-    try:
-        await bot.edit_message_text(
-            chat_id = config.main_channel_id,
-            message_id = config.main_channel_message_id,
-            text = DEFAULT_MESSAGE,
-            disable_web_page_preview = True
-        )
-
-    except exceptions.TelegramAPIError:
-        pass
 
 
 @dispatcher.shutdown()

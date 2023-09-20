@@ -1,7 +1,6 @@
-from httpx import AsyncClient
+from httpx import AsyncClient, ReadTimeout
 
-from matplotlib import pyplot
-from matplotlib import dates as matplotlib_dates
+from matplotlib import pyplot, dates as matplotlib_dates
 from datetime import datetime
 from io import BytesIO
 
@@ -12,8 +11,9 @@ from typing import Optional, List, Union, Tuple
 
 class CoinGecko:
     BASE_URL: str = "https://api.coingecko.com/api/v3/coins/{coin}{method}"
+    TIMEOUT: float = 3.0
 
-    def __init__(self, vs_currency: str, chart_days: int, proxies: Optional[List[str]]=None) -> None:
+    def __init__(self, vs_currency: str, chart_days: int, proxies: Optional[List[Union[str, None]]]=None) -> None:
         self.vs_currency: str = vs_currency
         self.chart_days: int = chart_days
 
@@ -24,7 +24,8 @@ class CoinGecko:
 
         self._http_clients: List[AsyncClient] = [
             AsyncClient(
-                proxies = proxy
+                proxies = proxy,
+                timeout = self.TIMEOUT
             )
             for proxy in proxies
         ]
@@ -48,22 +49,27 @@ class CoinGecko:
         method: Optional[str]=None,
         http_method: Optional[str]=None,
         **kwargs
-    ) -> Union[dict, list]:
-        return (
-            await self._http_client.request(
-                method = http_method or "GET",
-                url = self.BASE_URL.format(
-                    coin = coin,
-                    method = (
-                        method
-                        if method
-                        else
-                        ""
+    ) -> dict:
+        while True:
+            try:
+                return (
+                    await self._http_client.request(
+                        method = http_method or "GET",
+                        url = self.BASE_URL.format(
+                            coin = coin,
+                            method = (
+                                method
+                                if method
+                                else
+                                ""
+                            )
+                        ),
+                        **kwargs
                     )
-                ),
-                **kwargs
-            )
-        ).json()
+                ).json()
+
+            except ReadTimeout:
+                pass
 
     async def get_market_data(self, coin_code: str) -> dict:
         return (
