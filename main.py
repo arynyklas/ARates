@@ -66,7 +66,7 @@ async def tg_request_repeater(coro: Coroutine) -> None:
         try:
             await coro
         except exceptions.TelegramAPIError:
-            pass
+            await sleep(1)
         else:
             break
 
