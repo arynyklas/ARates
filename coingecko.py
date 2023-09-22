@@ -1,4 +1,4 @@
-from httpx import AsyncClient, ReadTimeout
+from httpx import AsyncClient, HTTPError
 
 from matplotlib import pyplot, dates as matplotlib_dates
 from datetime import datetime
@@ -68,7 +68,7 @@ class CoinGecko:
                     )
                 ).json()
 
-            except ReadTimeout:
+            except HTTPError:
                 pass
 
     async def get_market_data(self, coin_code: str) -> dict:
