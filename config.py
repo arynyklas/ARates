@@ -16,6 +16,9 @@ class CoingeckoConfig(BaseModel):
 
 class Config(BaseModel):
     bot_token: str
+    logs_chat_id: int
+    logger_name: str
+    logger_level: str
     main_channel_id: int
     main_channel_url: str
     main_channel_title: str

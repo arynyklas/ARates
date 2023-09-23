@@ -1,19 +1,23 @@
 from httpx import AsyncClient, HTTPError
-
+from json import JSONDecodeError
 from matplotlib import pyplot, dates as matplotlib_dates
 from datetime import datetime
 from io import BytesIO
 
 from pytz import utc as utc_timezone
 
-from typing import Optional, List, Union, Tuple
+from typing import Optional, List, Tuple
+
+
+class HTTPMethods:
+    GET: str = "GET"
 
 
 class CoinGecko:
     BASE_URL: str = "https://api.coingecko.com/api/v3/coins/{coin}{method}"
     TIMEOUT: float = 3.0
 
-    def __init__(self, vs_currency: str, chart_days: int, proxies: Optional[List[Union[str, None]]]=None) -> None:
+    def __init__(self, vs_currency: str, chart_days: int, proxies: Optional[List[str]]=None) -> None:
         self.vs_currency: str = vs_currency
         self.chart_days: int = chart_days
 
@@ -30,6 +34,8 @@ class CoinGecko:
             for proxy in proxies
         ]
 
+        self._http_clients_count: int = len(self._http_clients)
+
         self._http_clients_index: int = 0
 
     @property
@@ -43,38 +49,34 @@ class CoinGecko:
 
         return http_client
 
-    async def _request(
-        self,
-        coin: str,
-        method: Optional[str]=None,
-        http_method: Optional[str]=None,
-        **kwargs
-    ) -> dict:
+    async def _request(self, coin: str, method: str, http_method: str, retries: Optional[int]=0, **request_kwargs) -> dict:
+        url: str = self.BASE_URL.format(
+            coin = coin,
+            method = method
+        )
+
         while True:
             try:
                 return (
                     await self._http_client.request(
-                        method = http_method or "GET",
-                        url = self.BASE_URL.format(
-                            coin = coin,
-                            method = (
-                                method
-                                if method
-                                else
-                                ""
-                            )
-                        ),
-                        **kwargs
+                        method = http_method,
+                        url = url,
+                        **request_kwargs
                     )
                 ).json()
 
-            except HTTPError:
-                pass
+            except (HTTPError, JSONDecodeError) as ex:
+                retries += 1
+
+                if retries == self._http_clients_count:
+                    raise ex
 
     async def get_market_data(self, coin_code: str) -> dict:
         return (
             await self._request(
-                coin = coin_code
+                coin = coin_code,
+                method = "",
+                http_method = HTTPMethods.GET
             )
         )["market_data"]
 
@@ -83,6 +85,7 @@ class CoinGecko:
             await self._request(
                 coin = coin_code,
                 method = "/market_chart",
+                http_method = HTTPMethods.GET,
                 params = dict(
                     vs_currency = self.vs_currency,
                     days = self.chart_days
@@ -126,15 +129,15 @@ class CoinGecko:
             )
         )
 
-        file: BytesIO = BytesIO()
+        buffered_file: BytesIO = BytesIO()
 
         pyplot.savefig(
-            file,
+            buffered_file,
             format = "png"
         )
 
         pyplot.close()
 
-        file.seek(0)
+        buffered_file.seek(0)
 
-        return file
+        return buffered_file
