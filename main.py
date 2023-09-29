@@ -14,12 +14,12 @@ import utils
 from typing import Optional, Tuple, Dict, AsyncGenerator, List
 
 
-dispatcher: Dispatcher = Dispatcher()
-
 bot: Bot = Bot(
     token = config.bot_token,
     parse_mode = enums.ParseMode.HTML
 )
+
+dispatcher: Dispatcher = Dispatcher()
 
 
 coingecko: CoinGecko = CoinGecko(
@@ -111,10 +111,6 @@ async def coingecko_prices_checker() -> None:
                     coin_code = coin_code
                 )
 
-                dt_now: datetime = datetime.now(
-                    tz = utc_timezone
-                )
-
                 parse_prices: Dict[str, Tuple[str, int]] = config.parse_prices.copy()
 
                 if coin_name in parse_prices:
@@ -164,8 +160,11 @@ async def coingecko_prices_checker() -> None:
                             coin_code = coin_code,
                             main_channel_url = config.main_channel_url,
                             main_channel_title = config.main_channel_title,
-                            time = dt_now.strftime("%H:%M"),
-                            date = dt_now.strftime("%d.%m.%Y")
+                            datetime = utils.format_datetime(
+                                datetime = datetime.now(
+                                    tz = utc_timezone
+                                )
+                            )
                         )
                     )
 
@@ -192,7 +191,12 @@ async def coingecko_prices_checker() -> None:
                     for coin_name, (_, channel_url) in config.channels.items()
                 ]),
                 main_channel_url = config.main_channel_url,
-                main_channel_title = config.main_channel_title
+                main_channel_title = config.main_channel_title,
+                datetime = utils.format_datetime(
+                    datetime = datetime.now(
+                        tz = utc_timezone
+                    )
+                )
             )
 
             await edit_default_message()

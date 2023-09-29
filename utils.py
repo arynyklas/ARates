@@ -2,6 +2,7 @@ from logging import Logger, getLogger as _getLogger
 from telegram_bot_logger import TelegramMessageHandler, formatters as logger_formatters
 from time import time
 from html import escape as _html_escape
+from datetime import datetime as _datetime
 
 from typing import List, Union
 
@@ -49,3 +50,7 @@ def prettify_number(string: str) -> str:
         return "+{}".format(number)
 
     return str(number)
+
+
+def format_datetime(datetime: _datetime) -> str:
+    return datetime.strftime("%d.%m.%Y %H:%M")

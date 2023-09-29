@@ -29,7 +29,8 @@ class CoinGecko:
         self._http_clients: List[AsyncClient] = [
             AsyncClient(
                 proxies = proxy,
-                timeout = self.TIMEOUT
+                timeout = self.TIMEOUT,
+                verify = False
             )
             for proxy in proxies
         ]
