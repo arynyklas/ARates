@@ -1,10 +1,12 @@
 from httpx import AsyncClient, HTTPError
 from json import JSONDecodeError
-from matplotlib import pyplot, dates as matplotlib_dates
 from datetime import datetime
+from matplotlib import pyplot, dates as matplotlib_dates
+from pandas import DataFrame
 from io import BytesIO
-
 from pytz import utc as utc_timezone
+
+import seaborn
 
 from typing import Optional, List, Tuple
 
@@ -110,18 +112,36 @@ class CoinGecko:
                 )
             )
 
-            prices.append(round(price, 2))
+            prices.append(
+                round(price, 6)
+            )
 
-        _, ax = pyplot.subplots()
+        seaborn.set_theme()
+
+        pyplot.figure(
+            figsize = (12, 6)
+        )
+
+        ax: pyplot.Axes = seaborn.lineplot(
+            x = "Time",
+            y = "Price",
+            data = DataFrame(
+                data = {
+                    "Time": times,
+                    "Price": prices
+                }
+            )
+        )
+
+        ax.set_xlabel("")
+        ax.set_ylabel("")
 
         if title:
             pyplot.title(
                 label = title,
                 loc = "center",
-                pad = 16
+                pad = 12
             )
-
-        pyplot.plot(times, prices)
 
         ax.xaxis.set_major_formatter(
             formatter = matplotlib_dates.DateFormatter(
@@ -129,6 +149,19 @@ class CoinGecko:
                 tz = utc_timezone
             )
         )
+
+        ax.xaxis.set_major_locator(
+            locator = matplotlib_dates.HourLocator(
+                interval = 1
+            )
+        )
+
+        pyplot.xticks(
+            rotation = 45,
+            ha = "right"
+        )
+
+        pyplot.tight_layout()
 
         buffered_file: BytesIO = BytesIO()
 
